@@ -3,11 +3,10 @@ package flavor.pie.board;
 import org.spongepowered.api.data.DataContainer;
 import org.spongepowered.api.data.DataHolder;
 import org.spongepowered.api.data.DataView;
-import org.spongepowered.api.data.manipulator.DataManipulatorBuilder;
 import org.spongepowered.api.data.manipulator.immutable.common.AbstractImmutableData;
 import org.spongepowered.api.data.manipulator.mutable.common.AbstractData;
 import org.spongepowered.api.data.merge.MergeFunction;
-import org.spongepowered.api.data.persistence.DataBuilder;
+import org.spongepowered.api.data.persistence.AbstractDataBuilder;
 import org.spongepowered.api.data.persistence.InvalidDataException;
 
 import java.util.NoSuchElementException;
@@ -156,50 +155,28 @@ public class PVPData extends AbstractData<PVPData, PVPData.ImmutablePVPData> {
             return 1;
         }
     }
-    public static class Builder implements DataManipulatorBuilder<PVPData, ImmutablePVPData> {
+    public static class Builder extends AbstractDataBuilder<PVPData> {
         int kills;
         int killstreak;
         int mobKills;
         int deaths;
         Board board;
         Builder(Board board) {
+            super(PVPData.class, 0);
             this.board = board;
             kills = 0;
             killstreak = 0;
             mobKills = 0;
             deaths = 0;
         }
-        @Override
-        public PVPData create() {
-            return new PVPData(kills, deaths, killstreak, mobKills, board);
-        }
 
         @Override
-        public Optional<PVPData> createFrom(DataHolder dataHolder) {
-            if (dataHolder.supports(PVPData.class)) {
-                PVPData data = dataHolder.getOrCreate(PVPData.class).get();
-                return Optional.of(new PVPData(data.kills, data.deaths, data.killstreak, data.mobKills, board));
-            } else {
-                return Optional.empty();
-            }
-        }
-
-        @Override
-        public Optional<PVPData> build(DataView container) throws InvalidDataException {
+        protected Optional<PVPData> buildContent(DataView container) throws InvalidDataException {
             try {
                 return Optional.of(new PVPData(container.getInt(board.kills.getQuery()).get(), container.getInt(board.deaths.getQuery()).get(), container.getInt(board.killstreak.getQuery()).get(), container.getInt(board.mobKills.getQuery()).get(), board));
             } catch (NoSuchElementException e) {
                 throw new InvalidDataException(e);
             }
-        }
-
-        @Override
-        public DataBuilder<PVPData> from(PVPData value) {
-            kills = value.kills;
-            killstreak = value.killstreak;
-            mobKills = value.mobKills;
-            deaths = value.deaths;
-            return this;
         }
     }
 }
