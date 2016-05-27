@@ -6,7 +6,6 @@ import com.google.common.primitives.Ints;
 import com.google.common.reflect.TypeToken;
 import com.google.inject.Inject;
 import ninja.leaping.configurate.commented.CommentedConfigurationNode;
-import ninja.leaping.configurate.hocon.HoconConfigurationLoader;
 import ninja.leaping.configurate.loader.ConfigurationLoader;
 import ninja.leaping.configurate.objectmapping.ObjectMappingException;
 import org.slf4j.Logger;
@@ -28,7 +27,6 @@ import org.spongepowered.api.entity.living.player.User;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.game.state.GameInitializationEvent;
 import org.spongepowered.api.event.game.state.GamePreInitializationEvent;
-import org.spongepowered.api.event.game.state.GameStartedServerEvent;
 import org.spongepowered.api.event.network.ClientConnectionEvent;
 import org.spongepowered.api.plugin.Plugin;
 import org.spongepowered.api.profile.GameProfile;
@@ -43,6 +41,7 @@ import org.spongepowered.api.service.user.UserStorageService;
 import org.spongepowered.api.text.Text;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.MonthDay;
 import java.util.Map;
@@ -64,6 +63,8 @@ public class Board {
     @Inject
     @DefaultConfig(sharedRoot = false)
     ConfigurationLoader<CommentedConfigurationNode> loader;
+    @Inject @DefaultConfig(sharedRoot = false)
+    Path path;
     CommentedConfigurationNode root;
     BiMap<Text, String> vars;
     Task task = null;
@@ -73,7 +74,7 @@ public class Board {
         try {
             root = loader.load();
             if (root.getNode("version").isVirtual()) {
-                loader.save(HoconConfigurationLoader.builder().setURL(game.getAssetManager().getAsset(this, "default.conf").get().getUrl()).build().load());
+                game.getAssetManager().getAsset(this, "default.conf").get().copyToFile(path);
                 root = loader.load();
             }
             for (CommentedConfigurationNode node : root.getNode("scoreboard", "items").getChildrenList()) {
@@ -100,18 +101,6 @@ public class Board {
         builder = new PVPData.Builder(this);
         game.getDataManager().registerBuilder(PVPData.class, builder);
         game.getCommandManager().register(this, CommandSpec.builder().description(Text.of("Toggles the scoreboard sidebar.")).executor(this::toggle).build(), "sidebar", "side", "board", "sb");
-    }
-    @Listener
-    public void startServer(GameStartedServerEvent e) {
-        if (task == null) {
-            task = Task.builder().intervalTicks(root.getNode("scoreboard", "update-delay").getInt()).execute(this::updateVariables).name("board-S-ScoreboardUpdater").submit(this);
-            if (root.getNode("temp-scoreboard-enabled").getBoolean()) {
-                int show = root.getNode("temp-scoreboard", "interval-show").getInt();
-                int hide = root.getNode("temp-scoreboard", "interval-hide").getInt();
-                Task.builder().delayTicks(show+hide).intervalTicks(show+hide).execute(() -> game.getServer().getOnlinePlayers().forEach(this::swapMain));
-                Task.builder().delayTicks(show).intervalTicks(show+hide).execute(() -> game.getServer().getOnlinePlayers().forEach(this::swapAlt));
-            }
-        }
     }
     public void updateVariables() {
         for (Player p : game.getServer().getOnlinePlayers()) {
@@ -142,7 +131,19 @@ public class Board {
     }
     @Listener
     public void onJoin(ClientConnectionEvent.Join e) throws ObjectMappingException {
-        Task.builder().delayTicks(1).execute(() -> {try {e.getTargetEntity().setScoreboard(constructScoreboard(e.getTargetEntity()));}catch(Exception ignored){}});
+        Task.builder().delayTicks(1).execute(() -> {
+            try {
+                e.getTargetEntity().setScoreboard(constructScoreboard(e.getTargetEntity()));
+                if (task == null) {
+                    task = Task.builder().intervalTicks(root.getNode("scoreboard", "update-delay").getInt()).execute(this::updateVariables).name("board-S-ScoreboardUpdater").submit(this);
+                    if (root.getNode("temp-scoreboard-enabled").getBoolean()) {
+                        int show = root.getNode("temp-scoreboard", "interval-show").getInt();
+                        int hide = root.getNode("temp-scoreboard", "interval-hide").getInt();
+                        Task.builder().delayTicks(show+hide).intervalTicks(show+hide).execute(() -> game.getServer().getOnlinePlayers().forEach(this::swapMain));
+                        Task.builder().delayTicks(show).intervalTicks(show+hide).execute(() -> game.getServer().getOnlinePlayers().forEach(this::swapAlt));
+                    }
+                }
+            } catch (Exception ignored) {}});
     }
     public CommandResult toggle(CommandSource src, CommandContext args) throws CommandException {
         if (!(src instanceof Player)) {
